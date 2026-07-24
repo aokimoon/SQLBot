@@ -1,0 +1,168 @@
+name: Sync upstream branches to fork and Codeberg
+
+on:
+  schedule:
+    - cron: '0 0,5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-sqlbot
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REMOTE: https://github.com/dataease/SQLBot.git
+  CODEBERG_REMOTE: https://codeberg.org/DNDC/SQLBot.git
+  PROTECTED_BRANCH_REGEX: '^dndc-'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add remotes and fetch upstream
+        run: |
+          set -euo pipefail
+          git remote add upstream "${UPSTREAM_REMOTE}" 2>/dev/null || git remote set-url upstream "${UPSTREAM_REMOTE}"
+          git remote add codeberg "${CODEBERG_REMOTE}" 2>/dev/null || git remote set-url codeberg "${CODEBERG_REMOTE}"
+          git fetch upstream --prune --tags '+refs/heads/*:refs/remotes/upstream/*'
+
+      - name: Configure Codeberg auth
+        env:
+          CODEBERG_USERNAME: ${{ secrets.CODEBERG_USERNAME }}
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${CODEBERG_USERNAME:?missing CODEBERG_USERNAME}"
+          : "${CODEBERG_TOKEN:?missing CODEBERG_TOKEN}"
+
+          cat > ~/.netrc <<EOF
+          machine codeberg.org
+          login ${CODEBERG_USERNAME}
+          password ${CODEBERG_TOKEN}
+          EOF
+          chmod 600 ~/.netrc
+
+      - name: Sync main while preserving fork workflows
+        run: |
+          set -euo pipefail
+
+          rm -rf /tmp/fork-workflows
+          mkdir -p /tmp/fork-workflows
+          if [ -d .github/workflows ]; then
+            cp -a .github/workflows/. /tmp/fork-workflows/
+          fi
+
+          git checkout main
+          git reset --hard upstream/main
+
+          rm -rf .github/workflows
+          mkdir -p .github/workflows
+          if [ -d /tmp/fork-workflows ] && [ -n "$(ls -A /tmp/fork-workflows 2>/dev/null || true)" ]; then
+            cp -a /tmp/fork-workflows/. .github/workflows/
+          fi
+
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Sync upstream main while preserving fork workflows"
+          fi
+
+          git push origin +HEAD:refs/heads/main
+          git push codeberg +HEAD:refs/heads/main
+
+      - name: Sync all branches
+        run: |
+          set -euo pipefail
+
+          protected_re="${PROTECTED_BRANCH_REGEX}"
+
+          mapfile -t upstream_branches < <(
+            git for-each-ref --format='%(refname:strip=3)' refs/remotes/upstream
+          )
+
+          mapfile -t origin_branches < <(
+            git ls-remote --heads origin |
+            awk '{sub(/^refs\/heads\//,"",$2); print $2}'
+          )
+
+          mapfile -t codeberg_branches < <(
+            git ls-remote --heads codeberg |
+            awk '{sub(/^refs\/heads\//,"",$2); print $2}'
+          )
+
+          contains() {
+            local needle="$1"
+            shift
+            for item in "$@"; do
+              [[ "$item" = "$needle" ]] && return 0
+            done
+            return 1
+          }
+
+          sync_branch_origin() {
+            local branch="$1"
+
+            echo "Syncing $branch → origin (strip workflows)"
+
+            tmpdir="$(mktemp -d)"
+            git worktree add --detach "$tmpdir" "refs/remotes/upstream/${branch}" >/dev/null
+
+            rm -rf "$tmpdir/.github/workflows"
+
+            git -C "$tmpdir" add -A
+            if ! git -C "$tmpdir" diff --cached --quiet; then
+              git -C "$tmpdir" commit -m "Sync upstream ${branch} (remove workflows)"
+            fi
+
+            git -C "$tmpdir" push origin +HEAD:refs/heads/"$branch"
+
+            git worktree remove --force "$tmpdir" >/dev/null 2>&1 || true
+            rm -rf "$tmpdir"
+          }
+
+          sync_branch_codeberg() {
+            local branch="$1"
+
+            echo "Syncing $branch → codeberg"
+
+            git push codeberg "+refs/remotes/upstream/${branch}:refs/heads/${branch}"
+          }
+
+          delete_branch() {
+            local remote="$1"
+            local branch="$2"
+            echo "Deleting $remote/$branch"
+            git push "$remote" ":refs/heads/$branch" || true
+          }
+
+          for branch in "${upstream_branches[@]}"; do
+            [[ "$branch" == "HEAD" ]] && continue
+            [[ "$branch" == "main" ]] && continue
+
+            sync_branch_origin "$branch"
+            sync_branch_codeberg "$branch"
+          done
+
+          for branch in "${origin_branches[@]}"; do
+            [[ "$branch" == "main" ]] && continue
+            contains "$branch" "${upstream_branches[@]}" || delete_branch origin "$branch"
+          done
+
+          for branch in "${codeberg_branches[@]}"; do
+            [[ "$branch" == "main" ]] && continue
+            [[ "$branch" =~ $protected_re ]] && continue
+            contains "$branch" "${upstream_branches[@]}" || delete_branch codeberg "$branch"
+          done
