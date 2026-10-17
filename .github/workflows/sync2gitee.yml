@@ -1,7 +1,5 @@
 name: Synchronize to Gitee
-on:
-  push:
-  workflow_dispatch:
+on: [push]
 jobs:
   repo-sync:
     runs-on: ubuntu-latest
@@ -13,6 +11,5 @@ jobs:
           dst: 'gitee/fit2cloud-feizhiyun'
           dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
           dst_token:  ${{ secrets.GITEE_TOKEN }}
-          account_type: 'org'
           static_list: "SQLBot"
           force_update: true
