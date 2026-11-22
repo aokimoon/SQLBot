@@ -60,28 +60,31 @@ jobs:
         run: |
           set -euo pipefail
 
-          rm -rf /tmp/fork-workflows
-          mkdir -p /tmp/fork-workflows
-          if [ -d .github/workflows ]; then
-            cp -a .github/workflows/. /tmp/fork-workflows/
+          # Always start from the latest fork main
+          git fetch origin main
+          git checkout -B main origin/main
+
+          # Sync upstream files except fork-owned workflows
+          git restore \
+            --source=upstream/main \
+            --staged --worktree \
+            -- . ':(exclude).github/workflows/**'
+
+          # Ensure workflows are never modified by the bot
+          if ! git diff --cached --quiet -- .github/workflows/; then
+            echo "::error::Unexpected workflow changes"
+            exit 1
           fi
 
-          git checkout main
-          git reset --hard upstream/main
-
-          rm -rf .github/workflows
-          mkdir -p .github/workflows
-          if [ -d /tmp/fork-workflows ] && [ -n "$(ls -A /tmp/fork-workflows 2>/dev/null || true)" ]; then
-            cp -a /tmp/fork-workflows/. .github/workflows/
-          fi
-
-          git add -A
+          # Preserve fork history and avoid force pushes
           if ! git diff --cached --quiet; then
-            git commit -m "Sync upstream main while preserving fork workflows"
+            git commit -m "Sync upstream main"
+            git push origin HEAD:refs/heads/main
           fi
 
-          git push origin +HEAD:refs/heads/main
-          git push codeberg +refs/remotes/upstream/main:refs/heads/main
+          # Codeberg remains an exact upstream main mirror
+          git push codeberg \
+            +refs/remotes/upstream/main:refs/heads/main
 
       - name: Sync all branches
         run: |
@@ -155,9 +158,10 @@ jobs:
             sync_branch_origin "$branch"
             sync_branch_codeberg "$branch"
           done
-
+  
           for branch in "${origin_branches[@]}"; do
             [[ "$branch" == "main" ]] && continue
+            [[ "$branch" =~ $protected_re ]] && continue
             contains "$branch" "${upstream_branches[@]}" || delete_branch origin "$branch"
           done
 
