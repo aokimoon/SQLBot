@@ -540,9 +540,18 @@
     "discovery_input_hint": "Search or enter a model ID manually",
 
     "discovery_fetch": "Get model list",
-    "discovery_success": "Fetched {count} models",
+    "discovery_success": "Fetched {count} models from the service",
+    "discovery_source_service": "Service result",
+    "discovery_source_builtin": "Built-in reference",
+    "discovery_source_missing": "Current configuration · Not returned",
+    "discovery_source_current": "Current configuration",
     "discovery_empty": "No models returned. You can enter a model ID manually.",
-    "discovery_failed": "Failed to fetch models. Check the address or credentials; you can enter a model ID manually.",
+    "discovery_failed": "Failed to fetch models. Please retry later or enter a model ID manually.",
+    "discovery_address": "Invalid API base URL. Check the address or enter a model ID manually.",
+    "discovery_credentials": "Authentication failed. Check the API key and service access permissions, or enter a model ID manually.",
+    "discovery_unsupported": "This service does not support fetching a model list. Enter a model ID manually.",
+    "discovery_invalid": "The model list format is invalid or exceeds size limits. Enter a model ID manually.",
+    "discovery_timeout": "Fetching the model list timed out. Please retry later or enter a model ID manually.",
     "discovery_key_reset": "The API address changed. Re-enter the API Key if authentication is required.",
 
     "int": "Integer",
@@ -1007,6 +1016,8 @@
     "be_turned_on": "Once the test connection is confirmed to be effective, it can be enabled"
   },
   "login": {
+    "platform_login_failed": "Login failed. Please try again or contact the administrator.",
+    "retry_login": "Log in again",
     "default_login": "Default",
     "ldap_login": "LDAP Login",
     "account_login": "Account Login",
@@ -1121,6 +1132,12 @@
     "qr_verifying": "Authorization received. Verifying account…",
     "qr_error": "Unable to load the QR code. Refresh to try again.",
     "timeout": "This verification has timed out. Verify your local password again.",
-    "manage_existing": "Enterprise authentication is currently unavailable. You can view and remove existing bindings only."
+    "manage_existing": "Enterprise authentication is currently unavailable. You can view and remove existing bindings only.",
+    "ldap_account": "LDAP account",
+    "ldap_password": "LDAP password",
+    "verify_ldap": "Verify LDAP account",
+    "platform_unavailable_hint": "This platform is disabled or its configuration is invalid. Ask an administrator to check Platform Integration in System Settings.",
+    "auth_unavailable_hint": "This authentication source is disabled or its configuration is invalid. Ask an administrator to check Login Authentication in System Settings.",
+    "new_binding_unavailable": "New bindings are unavailable. You can only manage existing bindings."
   }
 }

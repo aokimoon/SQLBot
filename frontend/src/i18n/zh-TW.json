@@ -540,9 +540,18 @@
     "discovery_input_hint": "支援搜尋或手動輸入模型 ID",
 
     "discovery_fetch": "取得模型清單",
-    "discovery_success": "已取得 {count} 個模型",
+    "discovery_success": "從服務取得 {count} 個模型",
+    "discovery_source_service": "服務回傳",
+    "discovery_source_builtin": "內建參考",
+    "discovery_source_missing": "目前設定 · 本次未回傳",
+    "discovery_source_current": "目前設定",
     "discovery_empty": "未傳回模型，可手動輸入模型 ID。",
-    "discovery_failed": "取得失敗，請檢查位址或憑證。可手動輸入模型 ID。",
+    "discovery_failed": "取得失敗，請稍後重試。可手動輸入模型 ID。",
+    "discovery_address": "API 基底位址無效，請檢查位址。亦可手動輸入模型 ID。",
+    "discovery_credentials": "驗證失敗，請檢查 API Key 與服務存取權限。亦可手動輸入模型 ID。",
+    "discovery_unsupported": "此服務不支援取得模型清單，可手動輸入模型 ID。",
+    "discovery_invalid": "模型清單格式無效或超出大小限制，可手動輸入模型 ID。",
+    "discovery_timeout": "取得模型清單逾時，請稍後重試。亦可手動輸入模型 ID。",
     "discovery_key_reset": "API 位址已變更，如需驗證，請重新填寫 API Key。",
 
     "int": "整數",
@@ -1007,6 +1016,8 @@
     "be_turned_on": "測試連線有效後，可開啟"
   },
   "login": {
+    "platform_login_failed": "登入失敗，請重試或聯絡管理員。",
+    "retry_login": "重新登入",
     "default_login": "預設",
     "ldap_login": "LDAP 登入",
     "account_login": "帳號登入",
@@ -1121,6 +1132,12 @@
     "qr_verifying": "授權成功，正在驗證帳號…",
     "qr_error": "二維碼載入失敗，請重新整理後重試。",
     "timeout": "本次身分驗證已逾時，請重新驗證本機密碼。",
-    "manage_existing": "商業認證目前無法使用，僅可檢視及解除現有綁定。"
+    "manage_existing": "商業認證目前無法使用，僅可檢視及解除現有綁定。",
+    "ldap_account": "LDAP 帳號",
+    "ldap_password": "LDAP 密碼",
+    "verify_ldap": "驗證 LDAP 帳號",
+    "platform_unavailable_hint": "此平台未啟用或設定無效，請聯絡管理員檢查系統設定中的平台對接設定。",
+    "auth_unavailable_hint": "此認證來源未啟用或設定無效，請聯絡管理員檢查系統設定中的登入認證設定。",
+    "new_binding_unavailable": "目前無法新增綁定，僅可管理既有綁定。"
   }
 }

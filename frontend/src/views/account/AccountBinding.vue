@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import { isAxiosError } from 'axios'
 import { ElMessage } from 'element-plus-secondary'
 import { useUserStore } from '@/stores/user'
-import { userApi } from '@/api/auth'
 import { getSQLBotAddr } from '@/utils/utils'
 import {
   bindingApi,
@@ -16,6 +15,7 @@ import {
 import BindingQr from './BindingQr.vue'
 import AvatarIcon from '@/assets/img/Default-avatar.svg'
 import lockIcon from '@/assets/svg/icon-key_outlined.svg?url'
+import ldapIcon from '@/assets/svg/logo_ldap.svg?url'
 import casIcon from '@/assets/svg/logo_cas.svg?url'
 import oidcIcon from '@/assets/svg/logo_oidc.svg?url'
 import oauthIcon from '@/assets/svg/logo_oauth.svg?url'
@@ -26,13 +26,15 @@ const { t } = useI18n()
 const user = useUserStore()
 const items = ref<Binding[]>([])
 const capabilities = ref<BindingCapabilities>()
-const tab = ref('bindings')
-const workspaceName = ref('')
+const tab = ref('basic')
 const selected = ref<Binding>()
 const dialog = ref(false)
 const step = ref<'password' | 'auth' | 'confirm' | 'unbind' | 'failed'>('password')
 const pwd = ref('')
-const error = ref('')
+const ldapUsername = ref('')
+const ldapPassword = ref('')
+const operationError = ref('')
+const loadError = ref('')
 const busy = ref(false)
 const attempt = ref<BindingAttempt>()
 const identity = ref<BindingStatus>()
@@ -47,6 +49,7 @@ let popup: Window | null = null
 const icons: Record<number, string> = {
   1: casIcon,
   2: oidcIcon,
+  3: ldapIcon,
   4: oauthIcon,
   6: wecomIcon,
   7: dingIcon,
@@ -57,6 +60,7 @@ const name = (origin: number) =>
   ({
     1: 'CAS',
     2: 'OIDC',
+    3: 'LDAP',
     4: 'OAuth2',
     6: t('user.wecom'),
     7: t('user.dingtalk'),
@@ -75,23 +79,24 @@ const localAccount = computed(() => !user.getOrigin)
 const available = computed(() => localAccount.value && !!capabilities.value?.show_bindings)
 const canBind = computed(() => available.value && !!capabilities.value?.can_bind)
 const activeTab = computed(() => (available.value ? tab.value : 'basic'))
+const disabledBindingHint = (item: Binding) => {
+  if (item.bound) return ''
+  if (!canBind.value) return t('binding.new_binding_unavailable')
+  if (!item.enabled)
+    return t(
+      item.origin > 5 ? 'binding.platform_unavailable_hint' : 'binding.auth_unavailable_hint'
+    )
+  return ''
+}
 const errorText = (e: unknown) =>
   isAxiosError(e) && typeof e.response?.data === 'string' ? e.response.data : t('binding.service')
 const stop = () => {
   clearTimeout(timer)
   clearInterval(clock)
 }
-const loadWorkspace = async () => {
-  try {
-    const options: { id: string | number; name: string }[] = await userApi.ws_options()
-    workspaceName.value =
-      options.find((option) => String(option.id) === String(user.getOid))?.name || ''
-  } catch {
-    // The profile remains readable when workspace metadata is temporarily unavailable.
-  }
-}
 const load = async () => {
   const version = ++profileEpoch
+  loadError.value = ''
   if (!localAccount.value) return
   try {
     const result = await bindingApi.capabilities()
@@ -102,9 +107,10 @@ const load = async () => {
       return
     }
     const bindings = await bindingApi.list()
-    if (version === profileEpoch && localAccount.value) items.value = bindings
+    if (version === profileEpoch && localAccount.value)
+      items.value = bindings.filter((binding) => binding.origin !== 9 || binding.bound)
   } catch (e) {
-    if (version === profileEpoch && localAccount.value) error.value = errorText(e)
+    if (version === profileEpoch && localAccount.value) loadError.value = errorText(e)
   }
 }
 const closePopup = () => {
@@ -120,7 +126,15 @@ const cancel = async () => {
   stop()
   closePopup()
   dialog.value = false
+  operationError.value = ''
+  busy.value = false
   pwd.value = ''
+  ldapUsername.value = ''
+  ldapPassword.value = ''
+  selected.value = undefined
+  identity.value = undefined
+  timedOut.value = false
+  qrCompletionUrl.value = ''
   const state = attempt.value?.state
   attempt.value = undefined
   if (state) {
@@ -132,13 +146,17 @@ const cancel = async () => {
   }
 }
 const choose = (item: Binding) => {
-  if (!available.value || (!item.bound && !canBind.value)) return
+  if (!available.value || (!item.bound && (!canBind.value || !item.enabled || item.origin === 9)))
+    return
+  epoch++
   timedOut.value = false
   selected.value = item
   attempt.value = undefined
   identity.value = undefined
   pwd.value = ''
-  error.value = ''
+  ldapUsername.value = ''
+  ldapPassword.value = ''
+  operationError.value = ''
   step.value = item.bound ? 'unbind' : 'password'
   dialog.value = true
 }
@@ -148,8 +166,9 @@ const expire = () => {
   stop()
   closePopup()
   step.value = 'failed'
+  busy.value = false
   timedOut.value = true
-  error.value = t('binding.timeout')
+  operationError.value = t('binding.timeout')
   if (state)
     void bindingApi.cancel(state).catch(() => {
       /* Server expiry also rejects old callbacks. */
@@ -182,14 +201,16 @@ const poll = async (version: number) => {
       stop()
       closePopup()
       step.value = 'failed'
-      error.value = t(result.status === 'conflict' ? 'binding.conflict' : 'binding.service')
+      operationError.value = t(
+        result.status === 'conflict' ? 'binding.conflict' : 'binding.service'
+      )
       return
     }
   } catch (e) {
     if (version !== epoch || step.value !== 'auth') return
     stop()
     step.value = 'failed'
-    error.value = errorText(e)
+    operationError.value = errorText(e)
     return
   }
   timer = setTimeout(() => {
@@ -205,13 +226,13 @@ const waitFor = (a: BindingAttempt) => {
   timedOut.value = false
   if (hasExpired()) return
   clock = setInterval(hasExpired, 1000)
-  void poll(epoch)
+  if (a.origin !== 3) void poll(epoch)
 }
 const verify = async () => {
   if (!pwd.value || busy.value || !selected.value) return
   const version = ++epoch
   busy.value = true
-  error.value = ''
+  operationError.value = ''
   try {
     const a = await bindingApi.start(selected.value.origin, pwd.value, getSQLBotAddr())
     if (version !== epoch) {
@@ -221,9 +242,44 @@ const verify = async () => {
     pwd.value = ''
     waitFor(a)
   } catch (e) {
-    if (version === epoch) error.value = errorText(e)
+    if (version === epoch) operationError.value = errorText(e)
   } finally {
-    busy.value = false
+    if (version === epoch) busy.value = false
+  }
+}
+const verifyLdap = async () => {
+  const a = attempt.value
+  if (!a || busy.value || !ldapUsername.value || !ldapPassword.value || hasExpired()) return
+  const version = ++epoch
+  stop()
+  busy.value = true
+  operationError.value = ''
+  try {
+    const result = await bindingApi.ldap(a.state, ldapUsername.value, ldapPassword.value)
+    if (version !== epoch) return
+    if (hasExpired()) return
+    if (result.status !== 'verified') {
+      step.value = 'failed'
+      operationError.value = t(
+        result.status === 'conflict' ? 'binding.conflict' : 'binding.service'
+      )
+      return
+    }
+    const verifiedIdentity = await bindingApi.status(a.state)
+    if (version === epoch && !hasExpired()) {
+      identity.value = verifiedIdentity
+      step.value = 'confirm'
+    }
+  } catch (e) {
+    if (version === epoch) {
+      step.value = 'failed'
+      operationError.value = errorText(e)
+    }
+  } finally {
+    if (version === epoch) {
+      ldapPassword.value = ''
+      busy.value = false
+    }
   }
 }
 const openAuth = (url?: string) => {
@@ -233,13 +289,13 @@ const openAuth = (url?: string) => {
     'sqlbot-account-binding',
     'popup,width=640,height=760'
   )
-  if (!popup) error.value = t('binding.popup_blocked')
+  if (!popup) operationError.value = t('binding.popup_blocked')
 }
 const refresh = async () => {
   const a = attempt.value
   if (!a || busy.value || qrState.value === 'verifying' || hasExpired()) return
   busy.value = true
-  error.value = ''
+  operationError.value = ''
   stop()
   const version = ++epoch
   try {
@@ -248,11 +304,11 @@ const refresh = async () => {
     else await bindingApi.cancel(next.state)
   } catch (e) {
     if (version === epoch) {
-      error.value = errorText(e)
+      operationError.value = errorText(e)
       step.value = 'failed'
     }
   } finally {
-    busy.value = false
+    if (version === epoch) busy.value = false
   }
 }
 const qrCode = async (code: string) => {
@@ -269,44 +325,50 @@ const qrCode = async (code: string) => {
   } catch (e) {
     if (version === epoch) {
       stop()
-      error.value = errorText(e)
+      operationError.value = errorText(e)
       step.value = 'failed'
     }
   }
 }
 const confirm = async () => {
   if (!attempt.value || busy.value) return
+  const version = ++epoch
   busy.value = true
-  error.value = ''
+  operationError.value = ''
   try {
     await bindingApi.confirm(attempt.value.state)
+    if (version !== epoch) return
     ElMessage.success(t('binding.bound_success'))
-    await cancel()
+    // End the UI operation immediately; server cancellation must not delay the refresh.
+    void cancel()
     await load()
   } catch (e) {
-    error.value = errorText(e)
+    if (version === epoch) operationError.value = errorText(e)
   } finally {
-    busy.value = false
+    if (version === epoch) busy.value = false
   }
 }
 const unbind = async () => {
   if (!selected.value || !pwd.value || busy.value) return
+  const version = ++epoch
   busy.value = true
-  error.value = ''
+  operationError.value = ''
   try {
     await bindingApi.unbind(selected.value.origin, pwd.value)
+    if (version !== epoch) return
     ElMessage.success(t('binding.unbound_success'))
-    await cancel()
+    // End the UI operation immediately; server cancellation must not delay the refresh.
+    void cancel()
     await load()
   } catch (e) {
-    error.value = errorText(e)
+    if (version === epoch) operationError.value = errorText(e)
   } finally {
-    busy.value = false
+    if (version === epoch) busy.value = false
   }
 }
-const retry = async () => {
+const retry = () => {
   const item = selected.value
-  await cancel()
+  void cancel()
   if (item) choose({ ...item, bound: false })
 }
 const onMessage = (event: MessageEvent) => {
@@ -319,9 +381,17 @@ const onMessage = (event: MessageEvent) => {
   const qrFrame = document.querySelector<HTMLIFrameElement>('.binding-completion')
   if (!event.source || (event.source !== popup && event.source !== qrFrame?.contentWindow)) return
   clearTimeout(timer)
-  void poll(epoch)
+  if (attempt.value?.origin !== 3) void poll(epoch)
 }
+watch(
+  activeTab,
+  (value, previous) => {
+    if (previous === 'bindings' && value !== 'bindings') void cancel()
+  },
+  { flush: 'sync' }
+)
 watch(localAccount, (allowed) => {
+  loadError.value = ''
   profileEpoch++
   capabilities.value = undefined
   tab.value = 'basic'
@@ -329,11 +399,10 @@ watch(localAccount, (allowed) => {
   else {
     void cancel()
     items.value = []
-    error.value = ''
+    operationError.value = ''
   }
 })
 onMounted(() => {
-  void loadWorkspace()
   if (localAccount.value) void load()
   window.addEventListener('message', onMessage)
 })
@@ -374,16 +443,15 @@ onBeforeUnmount(() => {
           <h2>
             {{ user.getName }} <span class="account-tag">{{ accountType }}</span>
           </h2>
-          <p>
-            {{ user.getAccount
-            }}<template v-if="workspaceName"
-              ><span class="workspace-separator" aria-hidden="true">{{ ' · ' }}</span
-              >{{ workspaceName }}</template
-            >
-          </p>
+          <p>{{ user.getAccount }}</p>
         </div>
       </section>
-      <el-alert v-if="error && !dialog" :title="error" type="error" :closable="false" />
+      <el-alert
+        v-if="loadError && !dialog && (activeTab === 'bindings' || !capabilities)"
+        :title="loadError"
+        type="error"
+        :closable="false"
+      />
       <section
         v-if="activeTab === 'basic'"
         class="basic-details"
@@ -421,17 +489,36 @@ onBeforeUnmount(() => {
             </p>
             <p v-if="item.stale" class="muted">{{ t('binding.stale') }}</p>
           </div>
-          <span class="binding-status" :class="{ bound: item.bound }"
-            ><span v-if="item.bound" aria-hidden="true">✓</span
-            >{{
-              t(
-                item.bound ? 'binding.bound' : item.enabled ? 'binding.unbound' : 'binding.disabled'
-              )
-            }}</span
+          <span v-if="!item.bound && !item.enabled" class="binding-status">{{
+            t('binding.disabled')
+          }}</span>
+          <el-tooltip
+            :content="disabledBindingHint(item)"
+            :disabled="!disabledBindingHint(item)"
+            :trigger="['hover', 'focus']"
+            placement="top"
           >
-          <el-button :disabled="!item.bound && (!item.enabled || !canBind)" @click="choose(item)">{{
-            t(item.bound ? 'binding.unbind' : 'binding.bind')
-          }}</el-button>
+            <span
+              class="binding-action"
+              :tabindex="disabledBindingHint(item) ? 0 : undefined"
+              :aria-label="disabledBindingHint(item) || undefined"
+            >
+              <el-button
+                :type="!item.bound && item.enabled && canBind ? 'primary' : 'default'"
+                :disabled="!item.bound && (!item.enabled || !canBind)"
+                @click="choose(item)"
+                >{{
+                  t(
+                    item.bound
+                      ? 'binding.unbind'
+                      : item.enabled
+                        ? 'binding.unbound'
+                        : 'binding.bind'
+                  )
+                }}</el-button
+              >
+            </span>
+          </el-tooltip>
         </div>
         <p class="binding-footnote"><img :src="lockIcon" alt="" />{{ t('binding.preserve') }}</p>
       </template>
@@ -530,6 +617,24 @@ onBeforeUnmount(() => {
             >
           </div>
         </div>
+        <el-form
+          v-else-if="selected?.origin === 3"
+          label-position="top"
+          @submit.prevent="verifyLdap"
+        >
+          <el-form-item :label="t('binding.ldap_account')"
+            ><el-input v-model="ldapUsername" autocomplete="off" :disabled="busy"
+          /></el-form-item>
+          <el-form-item :label="t('binding.ldap_password')"
+            ><el-input
+              v-model="ldapPassword"
+              type="password"
+              show-password
+              autocomplete="off"
+              :disabled="busy"
+              @keyup.enter="verifyLdap"
+          /></el-form-item>
+        </el-form>
         <div v-else class="auth-waiting">
           <img :src="icons[selected!.origin]" alt="" />
           <p>{{ t('binding.waiting') }}</p>
@@ -558,7 +663,12 @@ onBeforeUnmount(() => {
         </div>
         <p class="binding-footnote">{{ t('binding.preserve') }}</p>
       </div>
-      <el-alert v-if="error && !(timedOut && isQr)" :title="error" type="error" :closable="false" />
+      <el-alert
+        v-if="operationError && !(timedOut && isQr)"
+        :title="operationError"
+        type="error"
+        :closable="false"
+      />
       <template #footer>
         <el-button :disabled="busy" @click="cancel">{{ t('common.cancel') }}</el-button>
         <el-button
@@ -568,6 +678,14 @@ onBeforeUnmount(() => {
           :disabled="!pwd"
           @click="verify"
           >{{ t('binding.next') }}</el-button
+        >
+        <el-button
+          v-if="step === 'auth' && selected?.origin === 3"
+          type="primary"
+          :loading="busy"
+          :disabled="!ldapUsername || !ldapPassword"
+          @click="verifyLdap"
+          >{{ t('binding.verify_ldap') }}</el-button
         >
         <el-button v-if="step === 'confirm'" type="primary" :loading="busy" @click="confirm">{{
           t('binding.confirm')
@@ -603,7 +721,6 @@ onBeforeUnmount(() => {
 .account-header {
   height: 74px;
   padding: 26px 32px 20px;
-  border-bottom: 1px solid #eff0f1;
   h1 {
     font-size: 20px;
     font-weight: 500;
@@ -640,7 +757,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 16px;
   padding-bottom: 30px;
-  border-bottom: 1px solid #eff0f1;
   > .user-avatar {
     width: 56px;
     height: 56px;
@@ -657,9 +773,6 @@ onBeforeUnmount(() => {
     font-size: 13px;
     margin-top: 6px;
   }
-}
-.workspace-separator {
-  margin: 0 9px;
 }
 .basic-details {
   padding-top: 28px;
@@ -736,6 +849,9 @@ onBeforeUnmount(() => {
     padding: 0 16px;
   }
 }
+.binding-action {
+  display: inline-flex;
+}
 .binding-info {
   flex: 1;
   min-width: 0;
@@ -754,9 +870,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-  &.bound {
-    color: #159b78;
-  }
 }
 .binding-footnote {
   font-size: 12px;
@@ -920,9 +1033,6 @@ onBeforeUnmount(() => {
     }
     p {
       font-size: 11px;
-    }
-    .workspace-separator {
-      margin: 0 4px;
     }
     .account-tag {
       margin-left: 3px;

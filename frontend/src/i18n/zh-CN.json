@@ -540,9 +540,18 @@
     "discovery_input_hint": "支持搜索或手动输入模型 ID",
 
     "discovery_fetch": "获取模型列表",
-    "discovery_success": "已获取 {count} 个模型",
+    "discovery_success": "从服务获取 {count} 个模型",
+    "discovery_source_service": "服务返回",
+    "discovery_source_builtin": "内置参考",
+    "discovery_source_missing": "当前配置 · 本次未返回",
+    "discovery_source_current": "当前配置",
     "discovery_empty": "未返回模型，可手动输入模型 ID。",
-    "discovery_failed": "获取失败，请检查地址或凭据。可手动输入模型 ID。",
+    "discovery_failed": "获取失败，请稍后重试。可手动输入模型 ID。",
+    "discovery_address": "API 基地址无效，请检查地址。也可手动输入模型 ID。",
+    "discovery_credentials": "鉴权失败，请检查 API Key 和服务访问权限。也可手动输入模型 ID。",
+    "discovery_unsupported": "此服务不支持获取模型列表，可手动输入模型 ID。",
+    "discovery_invalid": "模型列表格式无效或超出大小限制，可手动输入模型 ID。",
+    "discovery_timeout": "获取模型列表超时，请稍后重试。也可手动输入模型 ID。",
     "discovery_key_reset": "API 地址已变化，如需鉴权，请重新填写 API Key。",
 
     "int": "整数",
@@ -1007,6 +1016,8 @@
     "be_turned_on": "测试连接有效后，可开启"
   },
   "login": {
+    "platform_login_failed": "登录失败，请重试或联系管理员。",
+    "retry_login": "重新登录",
     "default_login": "默认",
     "ldap_login": "LDAP 登录",
     "account_login": "账号登录",
@@ -1121,6 +1132,12 @@
     "qr_verifying": "授权成功，正在验证账号…",
     "qr_error": "二维码加载失败，请刷新重试。",
     "timeout": "本次身份验证已超时，请重新验证本地密码。",
-    "manage_existing": "商业认证当前不可用，仅可查看和解除已有绑定。"
+    "manage_existing": "商业认证当前不可用，仅可查看和解除已有绑定。",
+    "ldap_account": "LDAP 账号",
+    "ldap_password": "LDAP 密码",
+    "verify_ldap": "验证 LDAP 账号",
+    "platform_unavailable_hint": "该平台未启用或配置无效，请联系管理员检查系统设置中的平台对接配置。",
+    "auth_unavailable_hint": "该认证源未启用或配置无效，请联系管理员检查系统设置中的登录认证配置。",
+    "new_binding_unavailable": "当前无法新增绑定，仅可管理已有绑定。"
   }
 }

@@ -49,3 +49,15 @@ uv run --no-sync pytest -q
 `UserBindingRequest` 与 `UserPlatformModel` 的关联字段、唯一约束由主工程模型及 `076_user_account_bindings.py` 管理，商业认证适配和绑定 API 留在 xpack。新版 xpack 对缺少 `UserBindingRequest` 的旧主工程不注册绑定路由，维持可导入性；新版主工程启用绑定前需先完成两仓库联调并消费包含绑定实现的 wheel。仅本地 editable 验证不能替代发布和依赖引用更新。原有登录组件不参与绑定回调，认证成功后的用户解析按显式关联 UID 获取原账号。
 
 个人信息页通过已认证的 `GET /system/account-bindings/capabilities` 读取 `show_bindings`、`can_bind`，不以列表为空或许可证异常推断版本。有效许可证允许本地账号展示绑定管理并发起绑定；无有效许可证且本人无历史绑定时只显示基本信息，有历史绑定时仅展示已绑定项并允许验证本地密码后解绑。能力与列表仅查询当前本地用户，非本地账号不调用绑定 API。实际新增及确认接口仍独立校验许可证，前端能力信息不替代后端权限检查。
+
+## Excel 导入错误报告
+
+术语配置、SQL 示例库和 xpack 自定义提示词共用下载接口。三个导入入口在生成错误报告后返回 `report_id`（UUID）和供前端展示、保存文件用的 `error_excel_filename`，没有错误报告时这两个字段均为 `null`。下载请求只传 `report_id`。报告由主仓库的 `backend/common/core/file.py` 写入 Excel 目录下的 `import-error-reports/`，按当前用户和工作空间读取，无需数据库记录。切换此契约时，前端、主仓库后端和包含该改动的 xpack wheel 需要配套部署。
+
+账号绑定新增 LDAP 凭据验证步骤（origin 3），复用认证源映射和显式确认协议。国际飞书（origin 9）仅允许历史关联管理；新增及确认均拒绝。审计将历史 `account_binding` 的 add/delete 记录映射为绑定/解绑类型，主工程新增操作枚举和五种语言文案需与 xpack 配套部署。
+
+## 工作空间模型审计
+
+主工程 `apps/system/crud/workspace_model.py` 将模型设置变更与审计记录写入同一事务，使用请求中的客户端信息。新记录的 `operation_detail` 以 `workspace_model_settings:` 开头，后接 JSON 字典，保存两端指定模型 ID 到显示名称的快照，不包含模型凭据；`remark` JSON 沿用 `before` / `after` 的 `enable_custom_model` 和 `custom_model` 字段。
+
+xpack 审计查询层按查看者语言展示系统默认、禁止调用、指定模型及变更前后值。指定模型优先使用保存的名称快照；历史记录缺少名称时显示 ID，不能用当前名称伪装历史快照。写入契约、读端格式化及主工程五种语言文案应配套验证；仅升级主工程不能宣称操作日志详情已完整修复。
