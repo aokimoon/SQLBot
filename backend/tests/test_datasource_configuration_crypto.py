@@ -334,12 +334,10 @@ def test_datasource_http_postgres(pg, monkeypatch, caplog):
         finally:
             pool_manager.remove_pool(ds_id)
     redirected = legacy(json.dumps({**config, "host": "redirect.invalid"}))
-    assert (
-        post(
-            "/check", json={**request, "id": ds_id, "configuration": redirected}
-        ).status_code
-        == 400
-    )
+    # Destination changes are allowed, but must not carry the saved password.
+    from apps.datasource.crud.datasource import seal_browser_configuration
+    redirected_configuration = seal_browser_configuration(redirected, saved)
+    assert json.loads(aes_decrypt(redirected_configuration))["password"] == ""
 
     excel_config = {
         "filename": "synthetic.xlsx",
@@ -372,3 +370,20 @@ def test_datasource_http_postgres(pg, monkeypatch, caplog):
         assert session.get(CoreDatasource, ds_id).configuration == saved
     assert "synthetic-only" not in caplog.text
     assert saved not in caplog.text
+
+
+@pytest.mark.parametrize("field,value", [("host", "other.invalid"), ("database", "other"), ("extraJdbc", "sslmode=require")])
+def test_changed_connection_does_not_reuse_password(key_file, field, value):
+    from apps.datasource.crud.datasource import seal_browser_configuration
+
+    saved = {"host": "localhost", "database": "original", "password": "abc", "extraJdbc": ""}
+    previous = aes_encrypt(json.dumps(saved)).decode()
+    incoming = {key: val for key, val in saved.items() if key != "password"}
+    retained = seal_browser_configuration(legacy(json.dumps(incoming)), previous)
+    assert json.loads(aes_decrypt(retained))["password"] == "abc"
+    incoming[field] = value
+    changed = seal_browser_configuration(legacy(json.dumps(incoming)), previous)
+    assert json.loads(aes_decrypt(changed))["password"] == ""
+    incoming["password"] = "new-password"
+    explicit = seal_browser_configuration(legacy(json.dumps(incoming)), previous)
+    assert json.loads(aes_decrypt(explicit))["password"] == "new-password"

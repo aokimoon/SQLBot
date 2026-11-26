@@ -50,6 +50,8 @@ npm --prefix tests/browser run cli -- -s=tooling close
 
 ## 使用 Test 回归
 
+多指标柱状图的百分比格式回归使用本地前端依赖打包 SQLBot 柱状图组件，在 Chrome 中悬停检查销售额和利润率的单位。运行 `npm --prefix tests/browser test -- --config=chart-percent.config.mjs`。
+
 ```sh
 # 工具自检 + 可选应用冒烟；未设置应用 URL 时明确跳过应用用例。
 npm --prefix tests/browser test
@@ -80,6 +82,20 @@ PLAYWRIGHT_BASE_URL=http://127.0.0.1:5173 npm --prefix tests/browser test -- --p
 该项目要求已启动前端，不访问真实后端或模型供应商；覆盖设置保存、取消、刷新回显，以及授权撤销和删除模型的影响确认。
 真实后端路由、权限、SQLite 持久化及本地模型请求由 `backend/tests/test_workspace_model_policy.py` 覆盖。
 两者不代表完整登录、真实 SQL 执行或部署验收。
+
+## 工作空间成员界面回归
+
+同名用户按账号搜索、勾选和全选的回归使用真实添加成员对话框，并以受控成员接口隔离后端：
+
+```sh
+npm --prefix tests/browser test -- --config=workspace-member.config.mjs
+```
+
+模型授权新增/修改空间时，搜索隐藏已选项后的清空行为由独立夹具覆盖：
+
+```sh
+npm --prefix tests/browser test -- --config=workspace-space.config.mjs
+```
 
 ## 登录状态和输出
 
@@ -112,6 +128,10 @@ npm --prefix tests/browser test -- --config=password.config.mjs
 需要先安装 `frontend` 依赖。独立 Vite 夹具监听 `127.0.0.1:4208`，加载当前 checkout 的真实 `PwdForm.vue`、`userApi` 和 HTTP 请求封装，替换会话/Store 边界，并通过 Playwright 拦截改密响应。覆盖中英文策略拒绝提示、保留表单、修改后重试成功、允许保存及网络失败提示。测试使用合成密码，不访问业务数据库；它不验证真实系统参数保存、鉴权、数据库事务或重新登录。
 
 后端对应离线测试为 `backend/tests/test_initial_password_policy.py`，提取实际函数并替换配置、用户和 Session 边界，验证开启/关闭策略、普通用户/管理员、旧密码与格式校验、拒绝时不写入。真实环境验收仍需在隔离账号上完成“开启策略 → 改密拒绝 → 合法改密 → 重新登录”。
+
+## 嵌入助手流式请求语言
+
+`npm --prefix tests/browser test -- --config=request-locale.config.mjs` 使用本机 Chrome 和已安装的前端依赖，在 `127.0.0.1:4243` 启动 Vite。测试加载真实嵌入页面并从问数 API 发起流式请求，检查未选择语言时浏览器发送的请求头、宿主 URL 语言及运行中 `setLang` 切换。许可证脚本和后端响应由测试替代。
 
 ## 菜单语言与切换账号回归
 
@@ -166,7 +186,7 @@ npm --prefix tests/browser test -- --config=model-discovery.config.mjs
 模型 API 封装，替换 HTTP 边界，以合成配置验证成功获取时仅展示远端候选并保留当前选择、下拉项右侧来源标注与服务获取数量、超时及其他已知错误码的明确安全提示、未知或旧响应兜底及重试恢复、空列表或失败时回退内置候选、列表去重、手动输入和提交、加载期间
 禁止重复请求、地址变化清空 Key、过期响应忽略及失败/空列表保留历史模型与高级参数。
 另以真实 `Model.vue` 验证保留原抽屉尺寸、取消/保存按钮、高级设置默认展开，
-并检查新增模型列表功能的原型状态；夹具使用内存模型详情，不访问业务数据库或真实供应商，
+并检查新增模型列表功能的原型状态；提示信息出现前后基础模型字段位置不变，且下拉面板紧贴输入框；夹具使用内存模型详情，不访问业务数据库或真实供应商，
 覆盖供应商注册表中所有当前开放供应商的获取和手动回退，以及供应商切换时清空凭据、
 忽略旧响应，保留模型专用默认端点并保护自定义地址。供应商列表接口全部使用合成响应，
 不代表各供应商实际提供列表接口；不替代完整登录、模型持久化和真实供应商连接验证。

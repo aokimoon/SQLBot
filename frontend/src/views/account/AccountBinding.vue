@@ -79,6 +79,11 @@ const localAccount = computed(() => !user.getOrigin)
 const available = computed(() => localAccount.value && !!capabilities.value?.show_bindings)
 const canBind = computed(() => available.value && !!capabilities.value?.can_bind)
 const activeTab = computed(() => (available.value ? tab.value : 'basic'))
+const stepIndex = computed(() => {
+  if (step.value === 'confirm') return 2
+  if (step.value === 'auth' || (timedOut.value && isQr.value)) return 1
+  return 0
+})
 const disabledBindingHint = (item: Binding) => {
   if (item.bound) return ''
   if (!canBind.value) return t('binding.new_binding_unavailable')
@@ -537,7 +542,7 @@ onBeforeUnmount(() => {
                 : 'binding.bind'
         )
       "
-      width="520"
+      width="600"
       class="binding-dialog"
       :close-on-click-modal="false"
       :close-on-press-escape="!busy"
@@ -549,12 +554,11 @@ onBeforeUnmount(() => {
         class="binding-steps"
         :aria-label="t('binding.steps')"
       >
-        <span :class="{ current: step === 'password' }">1 {{ t('binding.verify_identity') }}</span
-        ><i />
-        <span :class="{ current: step === 'auth' || (timedOut && isQr) }"
-          >2 {{ t('binding.platform_auth') }}</span
-        ><i />
-        <span :class="{ current: step === 'confirm' }">3 {{ t('binding.confirm') }}</span>
+        <el-steps custom :active="stepIndex">
+          <el-step :title="t('binding.verify_identity')" />
+          <el-step :title="t('binding.platform_auth')" />
+          <el-step :title="t('binding.confirm')" />
+        </el-steps>
       </div>
       <template v-if="step === 'password' || step === 'unbind'">
         <p class="dialog-description">
@@ -579,7 +583,11 @@ onBeforeUnmount(() => {
           <div class="provider-heading">
             <img :src="icons[selected!.origin]" alt="" />{{ name(selected!.origin) }}
           </div>
-          <div class="qr-stage" :aria-busy="qrState === 'loading' || qrState === 'verifying'">
+          <div
+            class="qr-stage"
+            :class="{ 'qr-stage-wecom': selected?.origin === 6 }"
+            :aria-busy="qrState === 'loading' || qrState === 'verifying'"
+          >
             <BindingQr
               v-if="!timedOut"
               :key="attempt.state"
@@ -884,19 +892,10 @@ onBeforeUnmount(() => {
   }
 }
 .binding-steps {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #a5a9af;
-  font-size: 12px;
-  margin: 26px 0;
-  i {
-    height: 1px;
-    background: #dee0e3;
-    flex: 1;
-  }
-  .current {
-    color: #159b78;
+  margin: 6px 0 26px;
+  :deep(.ed-step__title) {
+    font-size: 14px;
+    line-height: 22px;
   }
 }
 .dialog-description {
@@ -928,6 +927,11 @@ onBeforeUnmount(() => {
   border: 1px solid #e4e7ed;
   border-radius: 8px;
   overflow: hidden;
+}
+.qr-stage-wecom {
+  // 234px content area + 1px border, matching the cropped WeCom panel
+  width: 236px;
+  height: 236px;
 }
 .qr-overlay {
   position: absolute;
@@ -1060,8 +1064,9 @@ onBeforeUnmount(() => {
     flex: 1;
   }
   .binding-steps {
-    gap: 6px;
-    font-size: 11px;
+    :deep(.ed-step__title) {
+      font-size: 13px;
+    }
   }
 }
 </style>

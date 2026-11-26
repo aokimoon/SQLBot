@@ -38,6 +38,7 @@
             {{ $t('datasource.select_all') }}
           </el-checkbox>
           <el-checkbox-group
+            v-show="workspaceWithKeywords.length"
             v-model="checkedWorkspace"
             class="checkbox-group-block"
             @change="handleCheckedWorkspaceChange"
@@ -81,6 +82,9 @@
               </template>
             </FixedSizeList>
           </el-checkbox-group>
+          <div v-if="!workspaceWithKeywords.length" class="empty-members">
+            {{ $t('workspace.no_member_found') }}
+          </div>
         </div>
       </div>
       <div class="p-16 w-full">
@@ -103,7 +107,7 @@
             layout="vertical"
           >
             <template #default="{ index, style }">
-              <div :key="checkTableList[index].name" :style="style" class="hover-bg_select">
+              <div :key="checkTableList[index].id" :style="style" class="hover-bg_select">
                 <div
                   :title="`${checkTableList[index].name}(${checkTableList[index].account})`"
                   class="flex align-center ellipsis"
@@ -141,7 +145,7 @@
       <el-button secondary @click="centerDialogVisible = false">
         {{ $t('common.cancel') }}</el-button
       >
-      <el-button v-if="!checkedWorkspace.length" disabled type="info">{{
+      <el-button v-if="!checkTableList.length" disabled type="info">{{
         $t('model.add')
       }}</el-button>
       <el-button v-else type="primary" @click="handleConfirm"> {{ $t('model.add') }} </el-button>
@@ -169,26 +173,39 @@ const centerDialogVisible = ref(false)
 const checkTableList = ref([] as any[])
 
 const workspaceWithKeywords = computed(() => {
-  return workspace.value.filter((ele: any) =>
-    (ele.name.toLowerCase() as string).includes(search.value.toLowerCase())
-  )
+  const keyword = search.value.trim().toLowerCase()
+  if (!keyword) {
+    return workspace.value
+  }
+  return workspace.value.filter((ele: any) => {
+    return [ele.name, ele.account].some((field) =>
+      String(field ?? '')
+        .toLowerCase()
+        .includes(keyword)
+    )
+  })
 })
+const visibleUserIds = computed(
+  () => new Set(workspaceWithKeywords.value.map((ele: any) => String(ele.id)))
+)
+const syncCheckState = (checked: any[] = checkedWorkspace.value) => {
+  const checkedCount = checked.length
+  const visibleCount = workspaceWithKeywords.value.length
+  checkAll.value = visibleCount > 0 && checkedCount === visibleCount
+  isIndeterminate.value = checkedCount > 0 && checkedCount < visibleCount
+}
 watch(search, () => {
-  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
   checkedWorkspace.value = checkTableList.value.filter((ele: any) =>
-    tableNameArr.includes(ele.name)
+    visibleUserIds.value.has(String(ele.id))
   )
-  const checkedCount = checkedWorkspace.value.length
-  checkAll.value = checkedCount === workspaceWithKeywords.value.length
-  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
+  syncCheckState()
 })
 const handleCheckAllChange = (val: CheckboxValueType) => {
-  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
   checkedWorkspace.value = val
     ? [
         ...new Set([
           ...workspaceWithKeywords.value,
-          ...checkedWorkspace.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
+          ...checkedWorkspace.value.filter((ele: any) => !visibleUserIds.value.has(String(ele.id))),
         ]),
       ]
     : []
@@ -197,22 +214,19 @@ const handleCheckAllChange = (val: CheckboxValueType) => {
     ? [
         ...new Set([
           ...workspaceWithKeywords.value,
-          ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
+          ...checkTableList.value.filter((ele: any) => !visibleUserIds.value.has(String(ele.id))),
         ]),
       ]
-    : checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name))
+    : checkTableList.value.filter((ele: any) => !visibleUserIds.value.has(String(ele.id)))
 }
 const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
-  const checkedCount = value.length
-  checkAll.value = checkedCount === workspaceWithKeywords.value.length
-  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
-  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
   checkTableList.value = [
     ...new Set([
-      ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
+      ...checkTableList.value.filter((ele: any) => !visibleUserIds.value.has(String(ele.id))),
       ...value,
     ]),
   ]
+  syncCheckState(value)
 }
 let oid: any = null
 
@@ -270,7 +284,8 @@ const clearWorkspace = (val: any) => {
 
 const clearWorkspaceAll = () => {
   checkedWorkspace.value = []
-  handleCheckedWorkspaceChange([])
+  checkTableList.value = []
+  syncCheckState([])
 }
 
 defineExpose({
@@ -399,6 +414,15 @@ defineExpose({
   .max-height_workspace {
     max-height: calc(100% - 24px);
     overflow-y: auto;
+  }
+
+  .empty-members {
+    height: 330px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8f959e;
+    font-size: 14px;
   }
 
   .align-center {

@@ -109,6 +109,24 @@ const rules = reactive<FormRules>({
 })
 
 const dialogVisible = ref<boolean>(false)
+const savedConnection = ref('')
+const connectionFields = [
+  'host',
+  'port',
+  'username',
+  'database',
+  'dbSchema',
+  'mode',
+  'engine',
+  'ssl',
+  'extraJdbc',
+] as const
+const connectionSnapshot = () => JSON.stringify(connectionFields.map((field) => form.value[field]))
+const passwordPlaceholder = computed(() =>
+  savedConnection.value !== connectionSnapshot()
+    ? t('ds.form.changed_connection_password')
+    : t('ds.form.keep_saved_value')
+)
 const form = ref<any>({
   name: '',
   description: '',
@@ -168,6 +186,7 @@ const initForm = (item: any, editTable: boolean = false) => {
       form.value.port = configuration.port
       form.value.username = configuration.username
       form.value.database = configuration.database
+      form.value.extraJdbc = configuration.extraJdbc ?? ''
       form.value.dbSchema = configuration.dbSchema
       form.value.filename = configuration.filename
       form.value.sheets = configuration.sheets
@@ -185,6 +204,8 @@ const initForm = (item: any, editTable: boolean = false) => {
           : 5
       form.value.engine = configuration.engine ? configuration.engine : 'hive'
     }
+
+    savedConnection.value = connectionSnapshot()
 
     if (editTable) {
       dialogTitle.value = t('ds.form.choose_tables')
@@ -339,7 +360,7 @@ const buildConf = () => {
       username: form.value.username,
       password: form.value.id && !form.value.password ? undefined : form.value.password,
       database: form.value.database,
-      extraJdbc: form.value.id && !form.value.extraJdbc ? undefined : form.value.extraJdbc,
+      extraJdbc: form.value.extraJdbc,
       dbSchema: form.value.dbSchema,
       filename: form.value.filename,
       sheets: form.value.sheets,
@@ -714,7 +735,7 @@ defineExpose({
               clearable
               :placeholder="
                 form.id
-                  ? t('ds.form.keep_saved_value')
+                  ? passwordPlaceholder
                   : $t('datasource.please_enter') + $t('common.empty') + t('ds.form.password')
               "
               type="password"
@@ -769,9 +790,7 @@ defineExpose({
               v-model="form.extraJdbc"
               clearable
               :placeholder="
-                form.id
-                  ? t('ds.form.keep_saved_value')
-                  : $t('datasource.please_enter') + $t('common.empty') + t('ds.form.extra_jdbc')
+                $t('datasource.please_enter') + $t('common.empty') + t('ds.form.extra_jdbc')
               "
             />
           </el-form-item>

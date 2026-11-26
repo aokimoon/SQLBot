@@ -240,10 +240,20 @@ const initWorkspace = () => {
   })
 }
 
-const initUsers = () => {
-  userApi.pager(1, 10000).then((res: any) => {
-    filterOption.value[1].option = [{ id: 1, name: 'Administrator' }, ...res.items]
-  })
+const USER_PAGE_SIZE = 500
+
+const initUsers = async () => {
+  const users: any[] = []
+  let page = 1
+  let totalPages = 1
+  do {
+    const res: any = await userApi.pager(page, USER_PAGE_SIZE)
+    users.push(...res.items)
+    totalPages = res.total_pages
+    if (!res.items.length) break
+    page += 1
+  } while (page <= totalPages)
+  filterOption.value[1].option = [{ id: 1, name: 'Administrator' }, ...users]
 }
 
 const initOptions = () => {
@@ -289,11 +299,12 @@ const initOptions = () => {
               {{ scope.row.operation_type_name }}
             </template>
           </el-table-column>
-          <el-table-column :label="$t('audit.operation_details')" min-width="200"
-            ><template #default="scope">
-              {{ scope.row.operation_detail_info }}
-            </template>
-          </el-table-column>
+          <el-table-column
+            prop="operation_detail_info"
+            :label="$t('audit.operation_details')"
+            min-width="200"
+            :show-overflow-tooltip="{ popperClass: 'audit-detail-tooltip' }"
+          />
           <el-table-column :label="$t('audit.operation_user_name')" min-width="120"
             ><template #default="scope">
               {{ scope.row.user_name }}
@@ -399,6 +410,11 @@ const initOptions = () => {
 
   :deep(.ed-table__cell) {
     cursor: pointer;
+  }
+
+  :deep(.audit-detail-tooltip) {
+    max-width: min(560px, calc(100vw - 32px));
+    overflow-wrap: anywhere;
   }
 
   .tool-left {

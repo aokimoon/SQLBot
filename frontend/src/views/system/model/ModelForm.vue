@@ -477,16 +477,13 @@ defineExpose({
               <span v-if="!canDiscoverModels" class="enter">{{ t('model.enter_to_add') }}</span>
               <el-button
                 v-if="canDiscoverModels"
-                class="discovery-button"
-                :class="{ 'is-retry': discoveryState === 'error' }"
-                :link="discoveryState !== 'error' && !discovering"
-                :type="discovering ? 'default' : 'primary'"
-                :plain="discoveryState === 'error'"
+                class="discovery-button model-action"
+                text
                 :loading="discovering"
                 :disabled="discovering || !modelForm.api_domain.trim()"
                 @click="fetchModels"
               >
-                <el-icon v-if="!discovering"><icon_refresh /></el-icon>
+                <el-icon v-if="!discovering" size="16"><icon_refresh /></el-icon>
                 {{
                   t(
                     discovering
@@ -498,18 +495,9 @@ defineExpose({
                 }}
               </el-button>
             </template>
-            <div
-              v-if="canDiscoverModels && discoveryState === 'error' && discoveryMessage"
-              class="discovery-status error"
-              :title="discoveryErrorDetail"
-              role="status"
-            >
-              {{ discoveryMessage }}
-            </div>
             <el-select
               v-model="modelForm['base_model']"
               style="width: 100%"
-              :offset="canDiscoverModels && discoveryState === 'success' ? 34 : 12"
               :popper-class="canDiscoverModels ? 'discovery-model-options' : ''"
               filterable
               allow-create
@@ -538,13 +526,16 @@ defineExpose({
                 }}</span></template
               >
             </el-select>
-            <div
-              v-if="canDiscoverModels && discoveryState !== 'error' && discoveryMessage"
-              class="discovery-status"
-              :class="discoveryState"
-              role="status"
-            >
-              {{ discoveryMessage }}
+            <div v-if="canDiscoverModels" class="discovery-status-slot">
+              <div
+                v-if="discoveryMessage"
+                class="discovery-status"
+                :class="discoveryState"
+                :title="discoveryState === 'error' ? discoveryErrorDetail : undefined"
+                role="status"
+              >
+                {{ discoveryMessage }}
+              </div>
             </div>
           </el-form-item>
           <el-form-item
@@ -583,7 +574,7 @@ defineExpose({
         </div>
         <div v-if="modelSelected && configExpand" class="model-params">
           {{ t('model.model_parameters') }}
-          <span class="btn" @click="handleParamsCreate">
+          <span class="model-action" @click="handleParamsCreate">
             <el-icon size="16">
               <icon_add_outlined></icon_add_outlined>
             </el-icon>
@@ -703,24 +694,35 @@ defineExpose({
 
       .discovery-base-model {
         :deep(.ed-form-item__label) {
+          position: relative;
           width: 100%;
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
         }
         .discovery-button {
-          font-size: 16px;
-          color: #0066ff;
-          margin-left: auto;
+          position: absolute;
+          top: 50%;
+          right: 0;
+          transform: translateY(-50%);
           .ed-icon {
-            margin-right: 6px;
+            margin-right: 4px;
+          }
+          :deep(svg path) {
+            fill: currentColor;
           }
         }
-        .discovery-status {
+        .discovery-status-slot {
           width: 100%;
+          height: 26px;
+        }
+        .discovery-status {
           font-size: 14px;
           line-height: 22px;
           margin-top: 4px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
           &.success {
             color: #008a00;
           }
@@ -729,8 +731,6 @@ defineExpose({
           }
           &.error {
             color: #f00;
-            margin-top: 0;
-            margin-bottom: 8px;
           }
         }
       }
@@ -768,6 +768,27 @@ defineExpose({
         }
       }
 
+      .model-action {
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 4px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 22px;
+
+        &:not(.is-disabled) {
+          color: #1f2329;
+
+          &:hover {
+            background-color: #1f23291a;
+          }
+        }
+      }
+
       .model-params {
         display: flex;
         align-items: center;
@@ -776,20 +797,6 @@ defineExpose({
         font-size: 14px;
         line-height: 22px;
         margin: 16px 0 8px 0;
-
-        .btn {
-          height: 26px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0 4px;
-          border-radius: 6px;
-          cursor: pointer;
-
-          &:hover {
-            background-color: #1f23291a;
-          }
-        }
 
         .ed-icon {
           margin-right: 4px;
@@ -882,6 +889,8 @@ defineExpose({
     height: 40px;
     line-height: 40px;
     font-size: 16px;
+    // 勾选图标固定在 right: 12px、宽 16px，默认 26px 内边距会让右侧标识贴住图标
+    padding-right: 44px;
   }
   .ed-select-dropdown__item.is-selected {
     background: #e3efff;

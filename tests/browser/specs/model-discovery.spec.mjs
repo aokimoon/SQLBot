@@ -132,6 +132,53 @@ test("successful discovery replaces built-ins, preserves selection, and falls ba
   ).toHaveText("服务返回");
 });
 
+test("discovery button is a right-aligned text button whose icon follows the text color", async ({
+  page,
+}) => {
+  const button = fetchButton(page);
+  await expect(button).toHaveClass(/is-text/);
+  await expect(button).not.toHaveClass(/ed-button--primary/);
+  const style = await button.evaluate((el) => {
+    const s = getComputedStyle(el);
+    const icon = el.querySelector("svg path");
+    const label = el.closest(".ed-form-item__label");
+    return {
+      fontSize: s.fontSize,
+      height: s.height,
+      borderWidth: s.borderWidth,
+      position: s.position,
+      color: s.color,
+      iconFill: icon ? getComputedStyle(icon).fill : null,
+      rightDelta: label
+        ? Math.round(label.getBoundingClientRect().right - el.getBoundingClientRect().right)
+        : null,
+    };
+  });
+  expect(style.fontSize).toBe("14px");
+  expect(style.height).toBe("26px");
+  expect(style.borderWidth).toBe("0px");
+  expect(style.position).toBe("absolute");
+  expect(style.iconFill).toBe(style.color);
+  expect(Math.abs(style.rightDelta)).toBeLessThanOrEqual(1);
+
+  await page.route("**/api/system/aimodel/models", (route) =>
+    route.fulfill({ json: { models: [], error: "鉴权失败，请检查 API Key。" } }),
+  );
+  await domain(page).fill("http://127.0.0.1:4232/v1");
+  await button.click();
+  await expect(page.getByRole("status")).toContainText("获取失败");
+  await expect(button).toHaveClass(/is-text/);
+  await expect(button).not.toHaveClass(/ed-button--primary/);
+  const errorStyle = await button.evaluate((el) => {
+    const icon = el.querySelector("svg path");
+    return {
+      color: getComputedStyle(el).color,
+      iconFill: icon ? getComputedStyle(icon).fill : null,
+    };
+  });
+  expect(errorStyle.iconFill).toBe(errorStyle.color);
+});
+
 test("loading, stale responses and credential binding", async ({ page }) => {
   let release;
   await page.route("**/api/system/aimodel/models", async (route) => {
@@ -541,4 +588,54 @@ test("unknown, legacy and network failures use safe fallback and stale errors ar
   release();
   await response;
   await expect(page.getByRole("status")).toHaveCount(0);
+});
+
+test("discovery feedback keeps the layout stable and the dropdown anchored", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1024 });
+  const select = model(page);
+  const before = await select.boundingBox();
+  await page.route("**/api/system/aimodel/models", (route) =>
+    route.fulfill({ json: { models: ["demo-chat", "demo-reasoner"] } }),
+  );
+  await domain(page).fill("http://127.0.0.1:4232/v1");
+  await fetchButton(page).click();
+  await expect(page.getByRole("status")).toHaveText("从服务获取 2 个模型");
+  const afterFetch = await select.boundingBox();
+  expect(Math.abs(afterFetch.y - before.y)).toBeLessThan(1);
+  await select.click();
+  const popper = page.locator(".ed-select__popper.discovery-model-options");
+  await expect(popper).toBeVisible();
+  const popperBox = await popper.boundingBox();
+  expect(popperBox.y - (afterFetch.y + afterFetch.height)).toBeLessThan(24);
+  await page.keyboard.press("Escape");
+  await page.route("**/api/system/aimodel/models", (route) =>
+    route.fulfill({
+      json: { models: [], error_code: "credentials", error: "synthetic-secret" },
+    }),
+  );
+  await fetchButton(page).click();
+  await expect(page.getByRole("status")).toContainText("鉴权失败");
+  const afterFailure = await select.boundingBox();
+  expect(Math.abs(afterFailure.y - before.y)).toBeLessThan(1);
+  const statusBox = await page.getByRole("status").boundingBox();
+  expect(statusBox.y).toBeGreaterThan(afterFailure.y + afterFailure.height);
+});
+
+test("option source label keeps clear of the selection check", async ({ page }) => {
+  await page.getByRole("button", { name: "Edit legacy", exact: true }).click();
+  await model(page).click();
+  const popper = page.locator(".ed-select__popper.discovery-model-options");
+  await expect(popper).toBeVisible();
+  const selected = popper.locator(".ed-select-dropdown__item.is-selected");
+  await expect(selected).toHaveCount(1);
+  const itemBox = await selected.boundingBox();
+  const sourceBox = await selected
+    .locator(".model-option-source")
+    .boundingBox();
+  // 勾选图标绝对定位在 right: 12px、宽 16px，即占据右侧 12-28px。
+  expect(
+    itemBox.x + itemBox.width - (sourceBox.x + sourceBox.width),
+  ).toBeGreaterThanOrEqual(36);
 });
